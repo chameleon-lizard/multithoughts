@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Chat with Llama</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      max-width: 600px;
+    }
+    h1 {
+      text-align: center;
+    }
+    #chat {
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 400px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+    }
+    .message {
+      margin: 5px 0;
+      padding: 5px;
+      border-radius: 4px;
+    }
+    .user {
+      background-color: #eef;
+      align-self: flex-end;
+      text-align: right;
+    }
+    .assistant {
+      background-color: #efe;
+      align-self: flex-start;
+      text-align: left;
+    }
+    #controls {
+      display: flex;
+      gap: 10px;
+    }
+    #inputMessage {
+      flex: 1;
+      padding: 8px;
+    }
+    #sendBtn {
+      padding: 8px 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Chat with Llama</h1>
+  <div id="chat"></div>
+  <div id="controls">
+    <input type="text" id="inputMessage" placeholder="Enter your message..." />
+    <button id="sendBtn">Send</button>
+  </div>
+
+  <script>
+    const chatContainer = document.getElementById('chat');
+    const inputMessage = document.getElementById('inputMessage');
+    const sendBtn = document.getElementById('sendBtn');
+
+    // We'll maintain a conversation state in memory here:
+    // Each entry is { role: "user"|"assistant", content: "..." }.
+    let conversation = [];
+
+    // Utility: Add a message to the chat UI
+    function addMessage(role, content) {
+      const msgDiv = document.createElement('div');
+      msgDiv.classList.add('message');
+      msgDiv.classList.add(role);
+
+      if (role === 'user') {
+        msgDiv.innerHTML = `<strong>User:</strong> ${content}`;
+      } else {
+        msgDiv.innerHTML = `<strong>Assistant:</strong> ${content}`;
+      }
+
+      chatContainer.appendChild(msgDiv);
+      // Auto-scroll to bottom
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // Send message to the server
+    async function sendMessage() {
+      const userMessage = inputMessage.value.trim();
+      if (!userMessage) return;
+
+      // Display user's message in the chat UI
+      addMessage('user', userMessage);
+      // Clear the input field
+      inputMessage.value = '';
+
+      // Add user's message to the conversation array
+      conversation.push({ role: 'user', content: userMessage });
+
+      // Build request body for /v1/chat/completions
+      const requestBody = {
+        model: 'DeepSeek',     // Not strictly required by llama.cpp, but included for OpenAI API parity
+        messages: conversation, // The conversation so far
+        temperature: 0.7        // Example temperature
+      };
+
+      try {
+        // Call the FastAPI proxy endpoint. If your proxy is running on a different
+        // host/port, update the fetch URL accordingly.
+        const response = await fetch('http://localhost:8000/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+          addMessage('assistant', `Error: ${response.statusText}`);
+          return;
+        }
+
+        // llama.cpp server (via the proxy) returns a JSON structured similarly to OpenAI
+        const responseData = await response.json();
+        // We assume the format { choices: [{ message: { content: "..."} }] }
+        let assistantContent = 'No response';
+        if (responseData.choices && responseData.choices.length > 0) {
+          assistantContent = responseData.choices[0].message.content;
+        }
+
+        // Display the assistant's message
+        addMessage('assistant', assistantContent);
+
+        // Keep the conversation state updated
+        conversation.push({ role: 'assistant', content: assistantContent });
+      } catch (error) {
+        console.error('Error:', error);
+        addMessage('assistant', 'An error occurred while sending the request.');
+      }
+    }
+
+    // Send message on button click
+    sendBtn.addEventListener('click', () => {
+      sendMessage();
+    });
+
+    // Send message on Enter keypress
+    inputMessage.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+  </script>
+</body>
+</html>
+

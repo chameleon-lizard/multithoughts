@@ -1,0 +1,37 @@
+# Use the official llama.cpp server image with CUDA support
+FROM ghcr.io/ggerganov/llama.cpp:server-cuda
+
+# Combine anti-"sanction" fix, apt-get update, and wget install
+RUN sed -r 's#developer.download.nvidia.com#mirror.yandex.ru/mirrors/developer.download.nvidia.com#g' \
+       -i /etc/apt/sources.list.d/cuda-*.list \
+ && apt-get update \
+ && apt-get install -y wget \
+ && rm -rf /var/lib/apt/lists/*
+
+# Create a directory for models and switch to it
+RUN mkdir -p /models
+WORKDIR /models
+
+# Download the draft model (Qwen 1.5B in Q8_0 quantization)
+RUN wget -O DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf \
+    "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf"
+
+# Download the main model (Qwen 14B in Q6_K quantization)
+RUN wget -O DeepSeek-R1-Distill-Qwen-14B-Q6_K.gguf \
+    "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q6_K.gguf"
+
+# Expose the port on which the llama.cpp server listens
+EXPOSE 8080
+
+# Set the default command to run the llama.cpp server
+CMD ["/llama.cpp/server", \
+     "--model", "/models/DeepSeek-R1-Distill-Qwen-14B-Q6_K.gguf", \
+     "--model-draft", "/models/DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf", \
+     "-cb", \
+     "--n-gpu-layers-draft", "1000", \
+     "--n-gpu-layers", "1000", \
+     "--ctx-size", "128000", \
+     "--prio-batch", "0", \
+     "--batch-size", "4", \
+     "--flash-attn"]
+

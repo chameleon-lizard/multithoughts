@@ -1,17 +1,15 @@
 import os
 import uvicorn
 import logging
-from fastapi import FastAPI, Request, Response, Depends
-from dotenv import load_dotenv
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import HTMLResponse
 import httpx
 import asyncio
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Load environment variables from .env file
-load_dotenv()
 
 # The URL of llama.cpp server.
 LLAMA_BASE_URL = os.getenv("LLAMA_BASE_URL", "http://llama:8001")
@@ -19,7 +17,7 @@ LLAMA_BASE_URL = os.getenv("LLAMA_BASE_URL", "http://llama:8001")
 app = FastAPI()
 
 
-def get_temperature(request: Request):
+async def get_temperature(request: Request):
     """
     Extracts the temperature parameter from the request body.
     If the temperature is not set, defaults to 0.7 and adds 0.3.
@@ -42,9 +40,9 @@ async def fetch_streamed_responses(request: Request, path: str, temperature: flo
     Returns the first completed response.
     """
     async with httpx.AsyncClient() as client:
-        tasks = []  # List to store tasks
-        responses = []  # Store successful response
-        event = asyncio.Event()  # Event to signal when a response completes
+        tasks = []      # List to store tasks
+        responses = []  # Store successful responses
+        event = asyncio.Event()  # Signal when a response is complete
         url = f"{LLAMA_BASE_URL}/{path}"
         body = await request.body()
         headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
@@ -52,17 +50,16 @@ async def fetch_streamed_responses(request: Request, path: str, temperature: flo
         logger.info(f"Sending requests to: {url} with temperature: {temperature}")
 
         async def make_request():
-            """Handles a single request in streaming mode."""
             try:
                 async with client.stream("POST", url, headers=headers, params=params, content=body) as response:
                     collected_data = b""
                     async for chunk in response.aiter_bytes():
-                        if event.is_set():  # If another response has completed, stop collecting
+                        if event.is_set():
                             logger.info("Cancelling remaining requests.")
                             return
                         collected_data += chunk
                     responses.append(collected_data)
-                    event.set()  # Signal that a response has completed
+                    event.set()
                     logger.info("Response received, canceling others.")
             except Exception as e:
                 logger.error(f"Error during request: {e}")
@@ -84,7 +81,7 @@ async def chat_completions(request: Request):
     Retrieves temperature, sends 4 batched streaming requests, and returns the first completed response.
     """
     logger.info("Received request for /v1/chat/completions")
-    temperature = get_temperature(request)
+    temperature = await get_temperature(request)
     return await fetch_streamed_responses(request, "v1/chat/completions", temperature)
 
 
@@ -126,6 +123,20 @@ async def proxy(request: Request, path: str):
 
     logger.info("Returning proxied response.")
     return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
+
+
+@app.get("/", response_class=HTMLResponse)
+async def chat_webui_proxy():
+    """
+    Serves the chat UI from the local index.html file.
+    """
+    try:
+        with open("index.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+    except Exception as e:
+        logger.error(f"Error reading index.html: {e}")
+        html_content = "<html><body><h1>Error loading chat UI</h1></body></html>"
+    return HTMLResponse(content=html_content)
 
 
 if __name__ == "__main__":
