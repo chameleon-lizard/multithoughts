@@ -1,0 +1,30 @@
+# Use a base image with CUDA support (version 12.1)
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
+
+# Set noninteractive mode to avoid prompts during install
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install necessary dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    cmake \
+    build-essential \
+    ccache \
+    wget \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone the llama.cpp repository
+WORKDIR /app
+RUN git clone https://github.com/ggerganov/llama.cpp
+
+# Build llama.cpp with CUDA support
+WORKDIR /app/llama.cpp
+RUN mkdir build && cd build && cmake -DGGML_CUDA=ON .. && make -j $(nproc)
+
+# Optional:  Add PATH so the built executables can be easily run
+ENV PATH="/app/llama.cpp/build:${PATH}"
+
+# Example command to run after the build (replace with your actual usage)
+CMD ["/bin/bash"]  # This keeps the container running for interactive use
+

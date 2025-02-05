@@ -33,6 +33,20 @@ async def get_temperature(request: Request):
         return 0.7
 
 
+@app.get("/haha", response_class=HTMLResponse)
+async def chat_webui_proxy():
+    """
+    Serves the chat UI from the local index.html file.
+    """
+    try:
+        with open("index.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+    except Exception as e:
+        logger.error(f"Error reading index.html: {e}")
+        html_content = "<html><body><h1>Error loading chat UI</h1></body></html>"
+    return HTMLResponse(content=html_content)
+
+
 async def fetch_streamed_responses(request: Request, path: str, temperature: float):
     """
     Sends 4 batched requests to the llama.cpp server in streaming mode.
@@ -124,19 +138,6 @@ async def proxy(request: Request, path: str):
     logger.info("Returning proxied response.")
     return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
 
-
-@app.get("/", response_class=HTMLResponse)
-async def chat_webui_proxy():
-    """
-    Serves the chat UI from the local index.html file.
-    """
-    try:
-        with open("index.html", "r", encoding="utf-8") as f:
-            html_content = f.read()
-    except Exception as e:
-        logger.error(f"Error reading index.html: {e}")
-        html_content = "<html><body><h1>Error loading chat UI</h1></body></html>"
-    return HTMLResponse(content=html_content)
 
 
 if __name__ == "__main__":
